@@ -1,0 +1,11 @@
+Model Information:
+* title:	GCPD Cop Car
+* source:	https://sketchfab.com/3d-models/gcpd-cop-car-ac22cff222d44e37983c34a2b3a8cfc4
+* author:	RamonaFlowers🌼 (https://sketchfab.com/ramonaflowers)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "GCPD Cop Car" (https://sketchfab.com/3d-models/gcpd-cop-car-ac22cff222d44e37983c34a2b3a8cfc4) by RamonaFlowers🌼 (https://sketchfab.com/ramonaflowers) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
