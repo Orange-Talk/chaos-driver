@@ -1062,7 +1062,7 @@ gltfLoader.load(
   (gltf) => {
     const model = gltf.scene;
     model.scale.set(1.2, 1.2, 1.2);
-    model.rotation.y = 0;
+    model.rotation.y = Math.PI;
     model.position.set(0, 0, 0);
     model.traverse((child) => {
       if (child.isMesh) child.castShadow = true;
@@ -1557,7 +1557,7 @@ function updatePlayer(dt) {
 
   // Update mesh
   playerMesh.position.set(state.px, 0, state.pz);
-  playerMesh.rotation.y = state.angle + Math.PI;
+  playerMesh.rotation.y = state.angle;
 
   // Body roll
   const rollTarget = (right ? -1 : left ? 1 : 0) * 0.055 * speedNorm;
