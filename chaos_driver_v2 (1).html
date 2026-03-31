@@ -1466,30 +1466,30 @@ function updatePlayer(dt) {
   state.pvz += (facingVz - state.pvz) * Math.min(grip*dt, 1);
 
   // Movement with grid-based collision + AABB push-out
-  const SCALE = dt * 60 * 0.032;
-  const tryX = state.px + state.pvx * SCALE;
-  const tryZ = state.pz + state.pvz * SCALE;
+// RX7 MODEL PLAYER CAR
+let playerMesh = new THREE.Group();
+let playerWheels = [];
+let rx7Loaded = false;
+scene.add(playerMesh);
 
-  // Try full move first
-  if (isDrivable(tryX, tryZ)) {
-    state.px = tryX;
-    state.pz = tryZ;
-  } else if (isDrivable(tryX, state.pz)) {
-    // Slide along X
-    state.px = tryX;
-    state.pvz *= -0.3;
-    state.speed *= 0.5;
-    onCrash('building');
-  } else if (isDrivable(state.px, tryZ)) {
-    // Slide along Z
-    state.pz = tryZ;
-    state.pvx *= -0.3;
-    state.speed *= 0.5;
-    onCrash('building');
-  } else {
-    // Full stop - bounce back
-    state.pvx *= -0.3;
-    state.pvz *= -0.3;
+const gltfLoader = new THREE.GLTFLoader();
+gltfLoader.load('https://raw.githubusercontent.com/Orange-Talk/chaos-driver/main/models/mazda-rx7.glb', (gltf) => {
+    const model = gltf.scene;
+    model.scale.set(1.2, 1.2, 1.2);
+    model.rotation.y = Math.PI; // <--- This is the fix!
+    model.position.set(0, 0, 0);
+    model.traverse((child) => {
+        if (child.isMesh) child.castShadow = true;
+    });
+    playerMesh.add(model);
+    rx7Loaded = true;
+    console.log('RX7 loaded!');
+}, undefined, (error) => {
+    console.warn('RX7 load failed, using box car:', error);
+    const { group: fallback, wheels: fbWheels } = makePlayerCar();
+    fallback.children.slice().forEach(c => playerMesh.add(c));
+    playerWheels = fbWheels;
+});
     state.speed *= 0.25;
     onCrash('building');
   }
