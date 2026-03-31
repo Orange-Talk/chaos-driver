@@ -326,6 +326,7 @@
 </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
 'use strict';
 // ============================================================
@@ -1049,8 +1050,35 @@ function makePlayerCar() {
   return { group, wheels: wheelGroups };
 }
 
-const { group: playerMesh, wheels: playerWheels } = makePlayerCar();
+// RX7 MODEL PLAYER CAR
+let playerMesh = new THREE.Group();
+let playerWheels = [];
+let rx7Loaded = false;
 scene.add(playerMesh);
+
+const gltfLoader = new THREE.GLTFLoader();
+gltfLoader.load(
+  'https://raw.githubusercontent.com/Orange-Talk/chaos-driver/main/models/mazda-rx7.glb',
+  (gltf) => {
+    const model = gltf.scene;
+    model.scale.set(1.2, 1.2, 1.2);
+    model.rotation.y = Math.PI;
+    model.position.set(0, 0, 0);
+    model.traverse((child) => {
+      if (child.isMesh) child.castShadow = true;
+    });
+    playerMesh.add(model);
+    rx7Loaded = true;
+    console.log('RX7 loaded!');
+  },
+  undefined,
+  (error) => {
+    console.warn('RX7 load failed, using box car:', error);
+    const { group: fallback, wheels: fbWheels } = makePlayerCar();
+    fallback.children.slice().forEach(c => playerMesh.add(c));
+    playerWheels = fbWheels;
+  }
+);
 
 // ============================================================
 //  TRAFFIC CARS
@@ -1494,13 +1522,11 @@ function updatePlayer(dt) {
   state.bodyRoll += (rollTarget - state.bodyRoll) * dt * 7;
   playerMesh.rotation.z = state.bodyRoll;
 
-  // Wheel spin — rotate around local X axis (side-to-side axle)
-  const spinRate = state.speed * dt * 2.8;
-  playerWheels.forEach(w => {
-    // Spin: rotate the group around Z (which is the axle direction after rotation.z = PI/2)
-    // Actually tire is CylinderGeometry rotated z = PI/2, so spin it around local X
-    w.rotation.x -= spinRate;
-  });
+  // Wheel spin — only for fallback box car
+  if (!rx7Loaded && playerWheels.length > 0) {
+    const spinRate = state.speed * dt * 2.8;
+    playerWheels.forEach(w => { w.rotation.x -= spinRate; });
+  }
 }
 
 // ============================================================
