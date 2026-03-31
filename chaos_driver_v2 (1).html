@@ -1062,7 +1062,7 @@ gltfLoader.load(
   (gltf) => {
     const model = gltf.scene;
     model.scale.set(1.2, 1.2, 1.2);
-    model.rotation.y = Math.PI;
+    model.rotation.y = 0;
     model.position.set(0, 0, 0);
     model.traverse((child) => {
       if (child.isMesh) child.castShadow = true;
@@ -1249,10 +1249,11 @@ function updateCoins(dt) {
 }
 
 // ============================================================
-//  COLLISION HELPERS — proper AABB, no ghost walls
 // ============================================================
-const CAR_HALF_W = 1.2;
-const CAR_HALF_L = 2.3;
+// COLLISION HELPERS — rebuilt with proper AABB push-out
+// ============================================================
+const CAR_HALF_W = 1.1;
+const CAR_HALF_L = 2.2;
 
 function isOnRoad(x, z) {
   const mx = ((x % BLOCK) + BLOCK) % BLOCK;
@@ -1262,23 +1263,25 @@ function isOnRoad(x, z) {
   return Math.abs(mx - half) < hw || Math.abs(mz - half) < hw;
 }
 
-// Point-in-AABB with margin
-function pointInAABB(x, z, aabb, margin) {
-  return x > aabb.minX - margin && x < aabb.maxX + margin &&
-         z > aabb.minZ - margin && z < aabb.maxZ + margin;
-}
-
-// Check if a position collides with any stored building AABB
-function checkBuildingCollision(x, z) {
-  const margin = 0.4;
+function getAABBCollision(x, z, hw, hl) {
   for (let i = 0; i < buildingAABBs.length; i++) {
     const b = buildingAABBs[i];
-    if (x > b.minX - CAR_HALF_W - margin && x < b.maxX + CAR_HALF_W + margin &&
-        z > b.minZ - CAR_HALF_L - margin && z < b.maxZ + CAR_HALF_L + margin) {
-      return true;
+    const ex = b.minX - hw, eX = b.maxX + hw;
+    const ez = b.minZ - hl, eZ = b.maxZ + hl;
+    if (x > ex && x < eX && z > ez && z < eZ) {
+      const dL = x - ex, dR = eX - x, dB = z - ez, dF = eZ - z;
+      const m = Math.min(dL, dR, dB, dF);
+      if (m === dL) return { nx:  1, nz: 0, depth: dL };
+      if (m === dR) return { nx: -1, nz: 0, depth: dR };
+      if (m === dB) return { nx: 0, nz:  1, depth: dB };
+      return            { nx: 0, nz: -1, depth: dF };
     }
   }
-  return false;
+  return null;
+}
+
+function checkBuildingCollision(x, z, hw, hl) {
+  return getAABBCollision(x, z, hw || CAR_HALF_W, hl || CAR_HALF_L) !== null;
 }
 
 // City boundary
@@ -1442,33 +1445,25 @@ function updatePlayer(dt) {
   state.pvx += (facingVx - state.pvx) * Math.min(grip*dt, 1);
   state.pvz += (facingVz - state.pvz) * Math.min(grip*dt, 1);
 
-  // Move with collision
+  // Move with push-out collision resolution
   const SCALE = dt * 60 * 0.032;
-  const nx = state.px + state.pvx * SCALE;
-  const nz = state.pz + state.pvz * SCALE;
-
-  // Only register building hit if TRULY inside a building AABB
-  if (checkBuildingCollision(nx, state.pz) && !checkBuildingCollision(state.px, state.pz)) {
-    state.pvx *= -0.3; state.speed *= 0.3; onCrash('building');
-  } else {
-    state.px = nx;
+  state.px += state.pvx * SCALE;
+  state.pz += state.pvz * SCALE;
+  for (let iter = 0; iter < 4; iter++) {
+    const col = getAABBCollision(state.px, state.pz, CAR_HALF_W, CAR_HALF_L);
+    if (!col) break;
+    state.px += col.nx * (col.depth + 0.05);
+    state.pz += col.nz * (col.depth + 0.05);
+    const van = state.pvx * col.nx + state.pvz * col.nz;
+    if (van < 0) {
+      state.pvx -= col.nx * van * 1.4;
+      state.pvz -= col.nz * van * 1.4;
+      state.speed *= 0.3;
+      onCrash('building');
+    }
   }
-
-  if (checkBuildingCollision(state.px, nz) && !checkBuildingCollision(state.px, state.pz)) {
-    state.pvz *= -0.3; state.speed *= 0.3; onCrash('building');
-  } else {
-    state.pz = nz;
-  }
-
-  // City boundary
-  if (Math.abs(state.px) > CITY_BOUND) {
-    state.px = Math.sign(state.px) * CITY_BOUND;
-    state.pvx *= -0.35; state.speed *= 0.3; onCrash('wall');
-  }
-  if (Math.abs(state.pz) > CITY_BOUND) {
-    state.pz = Math.sign(state.pz) * CITY_BOUND;
-    state.pvz *= -0.35; state.speed *= 0.3; onCrash('wall');
-  }
+  if (Math.abs(state.px) > CITY_BOUND) { state.px = Math.sign(state.px)*CITY_BOUND; state.pvx *= -0.35; state.speed *= 0.3; onCrash('wall'); }
+  if (Math.abs(state.pz) > CITY_BOUND) { state.pz = Math.sign(state.pz)*CITY_BOUND; state.pvz *= -0.35; state.speed *= 0.3; onCrash('wall'); }
 
   // Drift detection
   const slipX = state.pvx - facingVx;
@@ -1686,12 +1681,17 @@ function updateCops(dt) {
     c.vz += Math.cos(c.angle) * thrust;
     c.vx *= 0.80; c.vz *= 0.80;
 
-    const cnx = c.x + c.vx;
-    const cnz = c.z + c.vz;
-    if (checkBuildingCollision(cnx, c.z)) { c.vx *= -0.5; c.angle += Math.PI*0.4; } else { c.x = cnx; }
-    if (checkBuildingCollision(c.x, cnz)) { c.vz *= -0.5; c.angle += Math.PI*0.4; } else { c.z = cnz; }
-
-    const bound = CITY_BOUND;
+    // Move cop with push-out collision
+      c.x += c.vx; c.z += c.vz;
+      const copCol = getAABBCollision(c.x, c.z, 1.1, 2.0);
+      if (copCol) {
+        c.x += copCol.nx * (copCol.depth + 0.05);
+        c.z += copCol.nz * (copCol.depth + 0.05);
+        const vd = c.vx * copCol.nx + c.vz * copCol.nz;
+        if (vd < 0) { c.vx -= copCol.nx * vd * 1.2; c.vz -= copCol.nz * vd * 1.2; }
+        c.angle += Math.PI * 0.25 * (Math.random() > 0.5 ? 1 : -1);
+      }
+      const bound = CITY_BOUND;
     if (Math.abs(c.x) > bound) { c.x = Math.sign(c.x)*bound; c.vx *= -0.5; }
     if (Math.abs(c.z) > bound) { c.z = Math.sign(c.z)*bound; c.vz *= -0.5; }
 
