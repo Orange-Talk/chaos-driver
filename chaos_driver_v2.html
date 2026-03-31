@@ -1123,7 +1123,7 @@ class ParticleSystem {
 }
 const particles = new ParticleSystem(600);
 
-const COIN_COUNT = 30;
+const COIN_COUNT = 24;
 const coinMeshes = [];
 
 function makeCoin(x, z) {
@@ -1172,8 +1172,8 @@ function updateCoins(dt) {
   });
 }
 
-const CAR_HALF_W = 1.1;
-const CAR_HALF_L = 2.2;
+const CAR_HALF_W = 1.25;
+const CAR_HALF_L = 2.35;
 
 function isOnRoad(x, z) {
   const mx = ((x % BLOCK) + BLOCK) % BLOCK;
@@ -1288,7 +1288,7 @@ const state = {
   traffic: [], cops: [],
 };
 
-const TRAFFIC_COUNT = 20;
+const TRAFFIC_COUNT = 16;
 const TIER_THRESHOLDS = [0, 100, 300, 600, 1200, 2500];
 let highScore = 0;
 
@@ -1342,110 +1342,125 @@ function updatePlayer(dt) {
     if (state.driftBoostTimer <= 0) state.driftBoost = false;
   }
 
-  const MAX_SPEED = 14.5;
-  const MAX_REVERSE = -4.5;
-  const ACCEL = 7.5;
-  const BRAKE_F = 10.5;
-  const COAST_DRAG = 0.988;
-  const HANDBRAKE_DRAG = 0.972;
+  const MAX_SPEED = 9.5;
+  const MAX_REVERSE = -3.2;
+  const ACCEL = 4.2;
+  const BRAKE_F = 7.8;
+  const COAST_DRAG = 0.982;
+  const HANDBRAKE_DRAG = 0.955;
 
   if (accel) {
     state.speed = Math.min(state.speed + ACCEL * dt, MAX_SPEED);
   } else if (brake) {
-    if (state.speed > 0.4) {
+    if (state.speed > 0.35) {
       state.speed = Math.max(0, state.speed - BRAKE_F * dt);
     } else {
-      state.speed = Math.max(MAX_REVERSE, state.speed - ACCEL * 0.55 * dt);
+      state.speed = Math.max(MAX_REVERSE, state.speed - ACCEL * 0.5 * dt);
     }
   } else {
     state.speed *= hb ? HANDBRAKE_DRAG : COAST_DRAG;
   }
 
-  if (Math.abs(state.speed) < 0.03) state.speed = 0;
+  if (Math.abs(state.speed) < 0.02) state.speed = 0;
 
   const spd = Math.abs(state.speed);
   const speedNorm = Math.min(spd / MAX_SPEED, 1);
 
-  let steerRate = 1.55 - speedNorm * 0.45;
-  if (hb) steerRate = 2.25;
-  if (spd < 2.5) steerRate *= 1.2;
+  let steerRate = 1.35 - speedNorm * 0.35;
+  if (hb) steerRate = 1.95;
+  if (spd < 2.0) steerRate *= 1.2;
 
-  if (left && spd > 0.08) {
+  if (left && spd > 0.05) {
     state.angle += steerRate * dt * Math.sign(state.speed || 1);
   }
-  if (right && spd > 0.08) {
+  if (right && spd > 0.05) {
     state.angle -= steerRate * dt * Math.sign(state.speed || 1);
   }
 
-  const grip = hb ? 3.8 : (accel ? 8.5 : 7.2);
+  const grip = hb ? 3.4 : (accel ? 7.0 : 6.2);
   const facingVx = Math.sin(state.angle) * state.speed;
   const facingVz = Math.cos(state.angle) * state.speed;
 
   state.pvx += (facingVx - state.pvx) * Math.min(grip * dt, 1);
   state.pvz += (facingVz - state.pvz) * Math.min(grip * dt, 1);
 
-  state.pvx *= hb ? 0.996 : 0.992;
-  state.pvz *= hb ? 0.996 : 0.992;
+  state.pvx *= hb ? 0.994 : 0.989;
+  state.pvz *= hb ? 0.994 : 0.989;
 
-  const tryX = state.px + state.pvx * dt * 60;
-  const tryZ = state.pz + state.pvz * dt * 60;
+  const moveX = state.pvx * dt * 60;
+  const moveZ = state.pvz * dt * 60;
+  const moveDist = Math.sqrt(moveX * moveX + moveZ * moveZ);
+  const steps = Math.max(1, Math.ceil(moveDist / 0.6));
 
-  if (isDrivable(tryX, tryZ)) {
-    state.px = tryX;
-    state.pz = tryZ;
-  } else if (isDrivable(tryX, state.pz)) {
-    state.px = tryX;
-    state.pvz *= -0.35;
-    state.speed *= 0.35;
-    onCrash('building');
-  } else if (isDrivable(state.px, tryZ)) {
-    state.pz = tryZ;
-    state.pvx *= -0.35;
-    state.speed *= 0.35;
-    onCrash('building');
-  } else {
-    state.pvx *= -0.35;
-    state.pvz *= -0.35;
-    state.speed *= 0.3;
-    onCrash('building');
-  }
+  let crashed = false;
 
-  for (let iter = 0; iter < 3; iter++) {
-    const col = getAABBCollision(state.px, state.pz, CAR_HALF_W, CAR_HALF_L);
-    if (!col) break;
-    state.px += col.nx * (col.depth + 0.05);
-    state.pz += col.nz * (col.depth + 0.05);
-    const van = state.pvx * col.nx + state.pvz * col.nz;
-    if (van < 0) {
-      state.pvx -= col.nx * van * 1.2;
-      state.pvz -= col.nz * van * 1.2;
-      state.speed *= 0.4;
+  for (let i = 0; i < steps; i++) {
+    const stepX = moveX / steps;
+    const stepZ = moveZ / steps;
+
+    const nextX = state.px + stepX;
+    const nextZ = state.pz + stepZ;
+
+    if (Math.abs(nextX) > CITY_BOUND || Math.abs(nextZ) > CITY_BOUND) {
+      if (Math.abs(nextX) > CITY_BOUND) state.pvx = 0;
+      if (Math.abs(nextZ) > CITY_BOUND) state.pvz = 0;
+      state.speed *= 0.15;
+      if (!crashed) {
+        onCrash('wall');
+        crashed = true;
+      }
+      break;
+    }
+
+    if (isDrivable(nextX, nextZ) && !checkBuildingCollision(nextX, nextZ, CAR_HALF_W, CAR_HALF_L)) {
+      state.px = nextX;
+      state.pz = nextZ;
+      continue;
+    }
+
+    let hitSomething = false;
+
+    if (isDrivable(nextX, state.pz) && !checkBuildingCollision(nextX, state.pz, CAR_HALF_W, CAR_HALF_L)) {
+      state.px = nextX;
+    } else {
+      state.pvx = 0;
+      hitSomething = true;
+    }
+
+    if (isDrivable(state.px, nextZ) && !checkBuildingCollision(state.px, nextZ, CAR_HALF_W, CAR_HALF_L)) {
+      state.pz = nextZ;
+    } else {
+      state.pvz = 0;
+      hitSomething = true;
+    }
+
+    if (hitSomething) {
+      state.speed *= 0.2;
+      if (!crashed) {
+        onCrash('building');
+        crashed = true;
+      }
+      break;
     }
   }
 
-  if (Math.abs(state.px) > CITY_BOUND) {
-    state.px = Math.sign(state.px) * CITY_BOUND;
-    state.pvx *= -0.35;
-    state.speed *= 0.35;
-    onCrash('wall');
-  }
-  if (Math.abs(state.pz) > CITY_BOUND) {
-    state.pz = Math.sign(state.pz) * CITY_BOUND;
-    state.pvz *= -0.35;
-    state.speed *= 0.35;
-    onCrash('wall');
+  for (let iter = 0; iter < 4; iter++) {
+    const col = getAABBCollision(state.px, state.pz, CAR_HALF_W, CAR_HALF_L);
+    if (!col) break;
+    state.px += col.nx * (col.depth + 0.06);
+    state.pz += col.nz * (col.depth + 0.06);
   }
 
   const slipX = state.pvx - facingVx;
   const slipZ = state.pvz - facingVz;
   const slipMag = Math.sqrt(slipX * slipX + slipZ * slipZ);
 
-  state.driftActive = slipMag > 1.4 && spd > 4.5;
+  state.driftActive = slipMag > 1.25 && spd > 4.0;
 
   const driftLabel = document.getElementById('drift-active-label');
 
   if (state.driftActive) {
-    state.driftScore += slipMag * dt * 18;
+    state.driftScore += slipMag * dt * 16;
     driftLabel.classList.add('on');
 
     const rearX = state.px - Math.sin(state.angle) * 2.1;
@@ -1457,11 +1472,11 @@ function updatePlayer(dt) {
     particles.emit(rearX - sideX, 0.1, rearZ - sideZ, 0x999999, intensity);
     particles.emit(rearX + sideX, 0.1, rearZ + sideZ, 0x999999, intensity);
 
-    if (slipMag > 3.6) {
+    if (slipMag > 3.4) {
       particles.emit(rearX, 0.06, rearZ, 0x222222, 2);
     }
 
-    if (hb && spd > 10) {
+    if (hb && spd > 8.5) {
       particles.emit(rearX, 0.1, rearZ, 0xff6600, 1);
     }
   } else {
@@ -1473,7 +1488,7 @@ function updatePlayer(dt) {
     }
   }
 
-  if (brake && spd > 7) {
+  if (brake && spd > 6) {
     const frontX = state.px + Math.sin(state.angle) * 1.8;
     const frontZ = state.pz + Math.cos(state.angle) * 1.8;
     particles.emit(frontX, 0.08, frontZ, 0xbbbbbb, 2);
@@ -1482,12 +1497,12 @@ function updatePlayer(dt) {
   playerMesh.position.set(state.px, 0, state.pz);
   playerMesh.rotation.y = state.angle;
 
-  const rollTarget = (right ? -1 : left ? 1 : 0) * 0.035 * speedNorm;
-  state.bodyRoll += (rollTarget - state.bodyRoll) * dt * 6;
+  const rollTarget = (right ? -1 : left ? 1 : 0) * 0.028 * speedNorm;
+  state.bodyRoll += (rollTarget - state.bodyRoll) * dt * 5.5;
   playerMesh.rotation.z = state.bodyRoll;
 
   if (!rx7Loaded && playerWheels.length > 0) {
-    const spinRate = state.speed * dt * 2.2;
+    const spinRate = state.speed * dt * 1.9;
     playerWheels.forEach(w => { w.rotation.x -= spinRate; });
   }
 }
